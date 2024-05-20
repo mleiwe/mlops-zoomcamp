@@ -97,4 +97,25 @@ It should look something similar to the plot below.
 
 Clearly we need some means of filtering the data. One good way is by removing the extreme percentiles at either end. We can determine the percentile cutoffs with the describe function to see where extreme values lie.
 
-    df_jan['duration'].describe(percentiles=[0.1])
+    df_jan['duration'].describe(percentiles=[0.01, 0.05, 0.95, 0.98, 0.99])
+
+Which produces..
+
+    count    3.066766e+06
+    mean     1.566900e+01
+    std      4.259435e+01
+    min     -2.920000e+01
+    1%       7.833333e-01
+    5%       3.300000e+00
+    50%      1.151667e+01
+    95%      3.646667e+01
+    98%      4.873333e+01
+    99%      5.725000e+01
+    max      1.002918e+04
+    Name: duration, dtype: float64
+
+Personally I would trim evenly based on percentages. But in this study they use all rides >= 1min and <= 60mins.
+
+    df_jan_filt = df_jan[(df_jan['duration'] >=1) & (df_jan['duration']<=60)]
+
+
