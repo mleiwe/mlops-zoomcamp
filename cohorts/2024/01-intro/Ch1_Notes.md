@@ -91,9 +91,10 @@ First look at the distribution of the duration values using seaborn.
 
     sns.distplot(df_jan['duration'])
 
-It should look something similar to the plot below. ![text](image.png)
+It should look something similar to the plot below.
 
-5.
+![text](image.png)
+
 Clearly we need some means of filtering the data. One good way is by removing the extreme percentiles at either end. We can determine the percentile cutoffs with the describe function to see where extreme values lie.
 
     df_jan['duration'].describe(percentiles=[0.1])
