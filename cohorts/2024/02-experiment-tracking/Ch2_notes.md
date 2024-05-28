@@ -95,18 +95,15 @@ In this case I recommend using VSCode to create your `requirements.txt` file.
 
 *NB You can also have this linked to your virtual machine if you are not running locally. For more information on how to set up a GCP virtual machine see my step by step description [here](https://github.com/mleiwe/mlops-zoomcamp/blob/Ch1_Marcus/cohorts/2024/01-intro/GoogleCloudSetUpNotes.md)*
 
-#####To Do##########
+[Making a requirements.txt file](Images/MakeRequirements.mov)
 
-Add screenshot/video of how to create the requirements.txt file
-
-####################
 
 ### 2.2.2 Create your virtual environment
 From the `requirements.txt` file you can now create your virtual environment (venv). There are several ways in which you can do this and several articles e.g.Sam LaFell's [medium blog post](https://medium.com/@SamLaFell/why-you-need-to-ditch-pip-and-conda-61edff26f8bd) that say you should use one way or another. In my opinion the best one is the one that works best for your project and one that you are either familiar with, or you have time to learn.
 
 Here's a vaguely helpful table (any comments and/or suggestions welcome).
 
-|                   | venv    | conda     | miniconda     |pipenv  | poetry    |
+|                   | venv    | anaconda     | miniconda     |pipenv  | poetry    |
 |-------------------|---------|-----------|---------------|--------|-----------|
 | **Good for...**   | **A simple project with minimal dependencies**. It's lightweight and built-in to python | **Beginners**. Conda is very user friendly, has a GUI and CLI, supports non-python packages and is consistent across platforms | When you need conda but **lightweight** | When you are **deploying to the web**. It is also reasonably user-friendly | A **python project with a range of dependencies**. It's quite modern, and user-friendly |
 | **Bad for...**    | **Non-python dependencies**. I believe it struggles if needed to be used [across multiple platforms](https://stackoverflow.com/questions/12033861/cross-platform-interface-for-virtualenv) too | **efficiency** Conda is large (~2GB memory required) and can be comparatively slow                                     | **Large projects** Miniconda doesn't have the full suite of packages of conda     | **Non-python dependencies**. Has been described as a bit of a [bodge job](https://www.reddit.com/r/learnpython/comments/or1qwh/virtualenv_vs_pipenv_vs_conda_is_one_superior_to/) | **Non-python dependencies** It is also heavy compared to venv |
