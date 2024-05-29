@@ -1,4 +1,5 @@
 # MLOps Zoomcamp 2024 - Marcus' Chapter 2 notes
+In these notes aside from the terminal inputs I will try and structure everything into a [practice notebook](./homework/Pracitce.ipynb) which will document everything you need to create a single 
 
 ## 2.1 Experiment Tracking
 Hosted by Christian Martinez. Basically this seems to be a talk on how to set up [MLflow](https://mlflow.org/).
@@ -10,7 +11,7 @@ Hosted by Christian Martinez. Basically this seems to be a talk on how to set up
 * `Experiment metadata`: All the information related to the overall experiment.
 
 ### What is experiment tracking?
-*Experiment tracking is the process of keeping track of all the **relevant information** from an **ML experiment*** 
+*"Experiment tracking is the process of keeping track of all the **relevant information** from an **ML experiment**"* 
 
 This typically includes...
 * Source code
@@ -28,11 +29,13 @@ But this can vary depending on the experiment.
 * Organisation: Multiple people need to use the code or work on it so 
 * Optimisation
 
-### Don'ts
-* Do not rely on GoogleSheets or Excel
-    * Error Prone
+### Things not to do ...
+* Skip tracking completely
+* Rely on GoogleSheets or Excel
+    * This is error prone. You either fiddle with APIs for ages, or manually cut and paste. ALso there is no way to store your model.
     * No typical standard format; e.g. in csv it is hard to save the arrays without converting it to a string.
     * Visibility and collaboration is hard.
+* Save every single model in separate notebooks/folders. It gets confusing and also uses a lot of memory inefficiently
 
 ### What is MLflow?
 MLflow is *"An open source platform for the machine learning lifecycle"*
@@ -41,12 +44,11 @@ In reality it's just a pip-installable Python package that contains four modules
 * `Tracking`: Focused on experiment tracking. 
 
     *"The MLflow Tracking is an API and UI for logging parameters, code versions, metrics, and output files when running your machine learning code and for later visualizing the results."* This can work beyond python, it works with REST, R, and Java APIs.
+* `Models`: Types of models.
 
-* `Models`: Types of models. 
-    
     *"An MLflow Model is a standard format for packaging machine learning models that can be used in a variety of downstream tools".*
 * `Model Registry`: Used to manage models. 
-    
+
     *"The MLflow Model Registry component is a centralized model store, set of APIs, and UI, to collaboratively manage the full lifecycle of an MLflow Model."*
 * `Projects`: 
     *"An MLflow Project is a format for packaging data science code in a reusable and reproducible way, based primarily on conventions".* 
@@ -82,60 +84,59 @@ This will be a brief description on how to use MLflow for an example problem
 
 ### 2.2.1. Create a requirements.txt 
 In this case we will need
-* python==3.9
-* mlflow
-* jupyter
-* sckit-learn
-* panadas
-* seaborn
-* hyperopt
-* xgboost
+```
+python==3.9
+mlflow
+jupyter
+sckit-learn
+panadas
+seaborn
+hyperopt
+xgboost
+```
 
-In this case I recommend using VSCode to create your `requirements.txt` file. 
+In this case I recommend using VSCode to create your `requirements.txt` file. The file for this session is [here](./homework/requirements.txt).
 
-*NB You can also have this linked to your virtual machine if you are not running locally. For more information on how to set up a GCP virtual machine see my step by step description [here](https://github.com/mleiwe/mlops-zoomcamp/blob/Ch1_Marcus/cohorts/2024/01-intro/GoogleCloudSetUpNotes.md)*
+*NB You can also have this linked to your virtual machine if you are not running locally. For more information on how to set up a GCP virtual machine see my [step by step description](https://github.com/mleiwe/mlops-zoomcamp/blob/Ch1_Marcus/cohorts/2024/01-intro/GoogleCloudSetUpNotes.md)*.
 
-[Making a requirements.txt file](Images/MakeRequirements.mov)
-
+![alt text](Images/MakingRequirements_txt.gif)
 
 ### 2.2.2 Create your virtual environment
 From the `requirements.txt` file you can now create your virtual environment (venv). There are several ways in which you can do this and several articles e.g.Sam LaFell's [medium blog post](https://medium.com/@SamLaFell/why-you-need-to-ditch-pip-and-conda-61edff26f8bd) that say you should use one way or another. In my opinion the best one is the one that works best for your project and one that you are either familiar with, or you have time to learn.
 
-Here's a vaguely helpful table (any comments and/or suggestions welcome).
+Here's a table that I created to help me understand when to use which virtual environment manager (any comments and/or suggestions welcome).
 
 |                   | venv    | anaconda     | miniconda     |pipenv  | poetry    |
 |-------------------|---------|-----------|---------------|--------|-----------|
 | **Good for...**   | **A simple project with minimal dependencies**. It's lightweight and built-in to python | **Beginners**. Conda is very user friendly, has a GUI and CLI, supports non-python packages and is consistent across platforms | When you need conda but **lightweight** | When you are **deploying to the web**. It is also reasonably user-friendly | A **python project with a range of dependencies**. It's quite modern, and user-friendly |
 | **Bad for...**    | **Non-python dependencies**. I believe it struggles if needed to be used [across multiple platforms](https://stackoverflow.com/questions/12033861/cross-platform-interface-for-virtualenv) too | **efficiency** Conda is large (~2GB memory required) and can be comparatively slow                                     | **Large projects** Miniconda doesn't have the full suite of packages of conda     | **Non-python dependencies**. Has been described as a bit of a [bodge job](https://www.reddit.com/r/learnpython/comments/or1qwh/virtualenv_vs_pipenv_vs_conda_is_one_superior_to/) | **Non-python dependencies** It is also heavy compared to venv |
 
-#### venv (for true OG style)
-For true robustness and safety, or jut to show off
+#### 2.2.2.1 venv 
+For true robustness and safety. I'd recommend this for simple python-only projects
 1. Create the virtual environment
     ```
     $python -m venv /path/to/new/virtual/environment
     ```
 2. Activate the new venv
-    
+
     For UNIX or MacOS
     ```
     $source environment_name/bin/activate
     ```
-
     For Windows
     ```
     $myenv\Scripts\activate
     ```
-3. Install dependencies from the `requirements.txt`
+3. Install packages from the `requirements.txt`
     ```
-    $pip install -r requirements.txt
-
-#### With Conda (miniconda is the same)
+    $pip install -r path/to/requirements.txt
+    ```
+#### 2.2.2.2 With Conda (miniconda is the same)
 Assuming you have conda already installed
 1. Create the venv
     ```
     $conda create -n environment_name
     ```
-
 2. Activate the venv
     ```
     $conda activate environment_name
@@ -144,13 +145,13 @@ Assuming you have conda already installed
     ```
     $conda install --file requirements.txt
     ```
-#### With Pipenv
+#### 2.2.2.3 With Pipenv
 If pipenv is already installed
 1. Install and create a new environment
     ```
     $pipenv install -r path/to/requirements.txt
     ```
-    NB you may also need to ceed control of versioning to the `pipfile` if you have versioning. You can either do that by altering the `requirements.txt` file or if you want to keep the versions run
+    NB you may also need to ceed control of versioning to the `pipfile` if you have versioning. You can either do that by altering the `requirements.txt` file or if you want to keep the versions run...
     ```
     $pipenv lock --keep-outdated
     ```
@@ -158,7 +159,7 @@ If pipenv is already installed
     ```
     $pipenv shell
     ```
-#### With Poetry
+#### 2.2.2.4 With Poetry
 1. Create a new poetry project
     ```
     $poetry new environment_name
@@ -172,19 +173,43 @@ If pipenv is already installed
     $poetry install --no-root -r path/to/requirements.txt
     ```
     NB the `--no-root` flag is there to ensure the dependencies are installed in the venv and not system-wide 
+
 ### 2.2.3 Configure the MLflow backend
+#### 2.2.3.1 Launching MLflow
 You can run the MLflow ui pretty easily with
 
     $mlflow ui
 
+If it doesn't launch in your browser immediately you can just copy and paste the `listening port` into your browser
+![Find the listening port of your browser](Images/MLflow_ListeningPort.png)
+
+You should then see the UI similar to below
+![MLflow at start](Images/MLflow_initial.png)
+
+#### 2.2.3.2 Why Configure the Backend?
 However, it might be necessary to hook-up a backend for several reasons.
 * **Centralised Tracking**: By default MLflow stores metadata in local files. Making it hard to collaborate across a team, and also it could fill your memory with lots of files.
+
 * **Model Registry**: The MLflow Model Registry requires a database-backed backend. That means if you want model versioning, annotations and/or lifecycle management. You need to configure a backend.
+
 * **Scalability**: As discussed in the centralised tracking section local file storage can be inefficient as the number of runs increases. If you set up a database backend like MySQL, PostgreSQL, or SQLite you can scale up quickly and also query large amounts of data.
+
 * **Persistence**: Local file storage can become inefficient and can be lost if the machine is restarted and/or files are deleted. The DB in the backend ensures run data persists and can be accessed reliably.
+
 * **Remote Access**: If you configure the backend, you can store the run on the [MLflow tracking server](https://mlflow.org/docs/latest/tracking/server.html) which provides a centralised endpoint for accessing run data and artifacts remotely.
 
-So to connect the backend, type the following into the CLI
+#### 2.2.3.3 Connecting the Backend
+There are are large number of possibilities for `backend stores` and these are well [documented](https://mlflow.org/docs/latest/tracking/backend-stores.html). This section will take you through how to create a local host and save various artifacts, in different data stores (middle panel in the image below).
+
+![Common MLflow set ups](Images/tracking-setup-overview.png)
+This is described [here](https://mlflow.org/docs/latest/tracking.html#id7) with tutorials to help you get familiar with it.
+
+However there are broadly two main parts
+* `Backend Store`: A persistent store for various run metadata. i.e properties such as parameters, run_id, run_time, start, and end times. This would typically be a database such as a SQLite one. But could also just be local files too.
+* `Artifact Store`: This persists large data associated for each model, such as model weights (e.g. a pickled scikit-learn model), images (e.g. PNGs), model and data files (e.g. Parquet file). MLflow stores artifacts ina a local file (`mlruns`) by default, but also supports different storage options such as Amazon S3 and Azure Blob Storage. See set up #3 in the image above.
+
+##### Creating a SQLite DB Backend
+So to connect the backend, type the following into the terminal.
 
     $mlflow ui --backend-store-uri <DB_Connection_URI>
 
@@ -192,20 +217,35 @@ Where the `--backend-store-uri` is the unique resoure identifier for your databa
 
     $mlflow server --backend-store-uri sqlite:///mlflow.db 
 
-The CLI should output a port that it is listening at. Copy and paste the port into your browser and you should see the MLflow frontend.
+This backend will be local to your machine, but it also can be sent to a **remote server** of whichever flavour you prefer
 
-NB If not running locally you can perform forwarding on VSCode
+As before if the UI is not launched immediately, the terminal should output a port that it is listening at. Copy and paste the port address into your browser and you should see the MLflow frontend.
+
+*NB If not running locally you can perform forwarding on VSCode so that it will appear in a browser on your machine*
+
+##### Storing Artifacts
+
+At this point I want to highlight that this is a *"bare-bones"* backend. Often we will need to store artifacts as well as the parameters. To do this you just need to add the `--default-artifact-root` flag with a path to the artifacts folder
+
+    $mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./artifacts
+
+In this case the artifacts will be stored locally in a folder in the current working directory called `artifacts`. However there is also support to upload these artifacts to S3 buckets, GoogleCloud, and Azure Blobs. You can reac more on this in the [artifact documentation](https://mlflow.org/docs/latest/tracking/artifacts-stores.html) page.
+
 
 ### 2.2.4 Running MLflow in a jupyter notebook
 1. Open up VSCode
 2. Navigate to the folder you want.
-3. Open the notebook you want to use (NB Make sure you are running the correct kernel)
-4. Import your libraries and MLflow in the manner below
+3. Open the notebook you want to use (NB Make sure you are running the correct kernel).
+    
+    In this case I recommend using the [Practice.ipynb](./homework/Pracitce.ipynb) notebook if you want to practice. There should be a set by step guide there but you can just run the *Preprocess* section for now.
 
+4. Configure mlflow to begin tracking
+    ```
     import mlflow
 
     mlflow.set_tracking_uri("sqlite:///mlflow.db") #The name of the database to use
     mlflow.set_experiment("new_experiment") #If already exists mlflow will append to existing data. Else it will make a new experiment.
+    ```
 
 5. Run the notebook up until you get to the part where you're actually building a model. For example
     ```
@@ -218,31 +258,50 @@ NB If not running locally you can perform forwarding on VSCode
         pickle.dump((dv,lr), f_out)
     ```
 
-To track this with MLflow, just place the whole thing within a mlflow `with` statement. Adding tags and variables as required.
+To track this with MLflow, just place the whole thing within a mlflow `with` statement. Adding tags and variables as required. For example the cell below.
 
+    #Libraries
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.metrics import mean_squared_error
+
+    #Train the model
     with mlflow.start_run():
-        ## MLflow: stor data source and tags
+        #MLflow tags
         mlflow.set_tag("developer","Marcus")
-        mlflow.log_param("train-data-path", "./path/to/train/data")
-        mlflow.log_param("validation-data-path", "./path/to/val/data")
-        
-        ## MLflow store parameters
-        alpha = 0.001
-        mlflow.log_param("alpha",alpha)
+        mlflow.log_param("train-data-path",train_path)
+        mlflow.log_param("val-data-path",val_path)
 
-        ## Original model
-        lr = LinearRegression(alpha)
-        lr.fit(X_train, y_train)
-        y_pred = lr.predict(X_val)
+        #Model init
+        params = {
+            'max_depth': 15,
+            'n_estimators': 50,
+            'min_samples_split': 2,
+            'min_samples_leaf': 4,
+            'random_state': 42
+        }
+        #Store Random Forest Parameters
+        mlflow.log_params(params)
+
+        #Actually train the model
+        rf = RandomForestRegressor(**params)
+        rf.fit(X_train, y_train)
+        y_pred = rf.predict(X_val)
+
+        #Evaluation
         rmse = mean_squared_error(y_val, y_pred, squared=False)
+        mlflow.log_metric("rmse",rmse)
 
-        ## MLflow store metrics
-        mlflow.log_metric("RMSE",rmse)
-
-        with open('models/lin_reg.bin', 'wb') as f_out:
-            pickle.dump((dv,lr), f_out)
+        #Save model
+        with open('./models/rf_reg.bin','wb') as f_out:
+            pickle.dump((dv,rf), f_out)
 
 Now if you navigate back to the MLflow frontend and you should see the outputs.
+
+![Example of a single run](Images/MLflow_SingleModel_demo.png)
+
+If you click on this then you'll see the parameters of the run including the RMSE and the tags that were created.
+
+However, while one could run this in a loop, hyperparameter tuning will improve this best. This will be discussed in the next section.
 
 ## 2.3 Experiment Tracking with MLflow
 Aim for this section is to learn how to add parameter tuning to the notebook and see how MLflow will store the data. And then finally explore the data and set up autologging.
@@ -301,21 +360,20 @@ Now we need to set up a function that tracks everything. e.g.
 
         return {'loss': rmse, 'status': STATUS_OK}
 
-Here `params` is the parameter set that we are running in the experiment and the status are the results in the hyperopt friendly format.
+Here `params` is the parameter set that we are running in the experiment and the status are the results in the hyperopt friendly format. Additionally make sure you return the loss value (rmse), as well as the status for the estimation to work.
 
 Next define your search space by creating a dictionary
 
-    search_space = {
-    'max_depth': scope.int(hp.quniform('max_depth', 4, 100, 1)),
-    'learning_rate': hp.loguniform('learning_rate', -3, 0),
-    'reg_alpha': hp.loguniform('reg_alpha', -5, -1),
-    'reg_lambda': hp.loguniform('reg_lambda', -6, -1),
-    'min_child_weight': hp.loguniform('min_child_weight', -1, 3),
-    'objective': 'reg:linear',
-    'seed': 42
+search_space = {
+        'max_depth': scope.int(hp.quniform('max_depth', 1, 20, 1)),
+        'n_estimators': scope.int(hp.quniform('n_estimators', 10, 100, 1)),
+        'min_samples_split': scope.int(hp.quniform('min_samples_split', 2, 20, 1)),
+        'criterion' : hp.choice('criterion', ['squared_error', 'poisson']),
+        'min_samples_leaf': scope.int(hp.quniform('min_samples_leaf', 1, 10, 1)),
+        'random_state': 42
     }
 
-*NB `hp.quniform` generates uniformly distributed values between a `min` and a `max`. This is similar for `hp.loguniform` which is for log distribution*
+*NB `hp.quniform` generates uniformly distributed values between a `min` and a `max` and the final value being the interval. This is similar for `hp.loguniform` which is for log distribution*
 
 Now you can just pass this all through to the `fmin` method. For example...
 
@@ -332,14 +390,25 @@ Each trial will be saved in MLflow and you can look at the UI to see the results
 For example you can select multiple trials and then hit compare to view results. This will help show which hyperparameters are the most important etc. You can also explore the the space.
 
 
-########### To Do ############
+### 2.3.3 Exploring Results with MLflow plots
+Aside from storing all the key experiment details the MLflow UI also produces nice and informative visualisations. By selecting the eye icons you can turn on or off visualisation data within the `Chart` tab. Furthermore by selecting a few of the models you can also produce plots with the `Compare` button. For the sake of brevity I'll just touch on those in the Chart tab (it is mostly the same anyway)
 
-Screen shot of results
-* Parallel Coordinate plot
-* Scatter plot
-* Contour plot
+![Layout of the Chart tab of MLflow](Images/ExperimentSummary.png)
+Layout of the Chart tab of MLflow
 
-##############################
+**Parallel Coordinate plot**
+
+This is the rainbow looking plot at the top. Experiments with a low RMSE are blue. While those that are red are poor models.
+
+What I found I am looking for is a spectral pattern of colours (i.e blue at the top, and red at the bottom, or vice versa). For example in the coordinate plot above. It is clear that a larger `max_depth` results in a lower/better RMSE. While for `min_samples_leaf` it seems that lower values produce better results.
+
+**Contour plot**
+
+The plot on the bottom right. These can help determine if you are stuck on a local minima/maxima, by looking at the overall parameter space of a combination of two coordinates. E.g. in this case we can see that the best solutions are grouped around low values for the `min_samples_leaf` parameter. However, what makes this plot useful in addition to the parallel coordinate plot is for when you use [Bayesian Optimisation](https://towardsdatascience.com/a-conceptual-explanation-of-bayesian-model-based-hyperparameter-optimization-for-machine-learning-b8172278050f). In this case the distribution of model parameters also proves enlightening as it selects the next parameter values to test based on distributions. In this case, bayesian optimisation appears to prefer lower values for both `min_samples_leaf` and `min_samples_split`.
+
+**Scatter plot**
+
+This rather helps to see the effects of a singular parameter to the evaluation metric *(or even the relationship between two parameters)*. As well as the overall trend here in RMSE decrease, we can see that the variation in RMSE scores also begins to increase after a `max_depth` of around `13-15` which suggests that this is the limit of effectiveness.
 
 ### 2.3.3 Selecting the best model
 1. In the mlflow browser UI, filter by the experiment tag.
@@ -394,7 +463,7 @@ This is quite verbose. It may be easier to use `mlflow.autolog()`. [Autolog](htt
 
 so all you need to do is type in the function. So for example.
 
-    mlfow.xgboost.autolog()
+    mlflow.xgboost.autolog()
 
     booster = xgb.train(
             params=best_params,
@@ -404,7 +473,12 @@ so all you need to do is type in the function. So for example.
             early_stopping_rounds=50
         )
 
-This will return a more complete set of metrics, extra visualisations in a .json and .png format, a specific requirements.txt, and also code for running the model either in python or it's original library.
+From running the `Evaluating Multiple Models` section of the Practice notebook you should be able to run and evaluate 4 different models (RandomForest, XGBoost, LinearRegression, and LassoRegression) and so observe the effects.
+
+This will return a more complete set of metrics, extra visualisations in a .json and .png format, a specific requirements.txt, and also code for running the model either in python or it's original library. In this case the mlflow.autolog() will save the artifacts  in `./mlruns/3`
+
+After running the codes if you navigate to the mlflow ui you should see the experiments listed similar to below.
+![alt text](Images/MultipleExperimentSummary.png)
 
 ## 2.4 Model Management (Saving and Loading Models with MLflow)
 ### 2.4.1 Where does experiment tracking fit into model management and MLops?
