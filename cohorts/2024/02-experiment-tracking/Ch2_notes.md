@@ -477,10 +477,12 @@ From running the `Evaluating Multiple Models` section of the Practice notebook y
 
 This will return a more complete set of metrics, extra visualisations in a .json and .png format, a specific requirements.txt, and also code for running the model either in python or it's original library. In this case the mlflow.autolog() will save the artifacts  in `./mlruns/3`
 
-After running the codes if you navigate to the mlflow ui you should see the experiments listed similar to below.
-![alt text](Images/MultipleExperimentSummary.png)
+After running the codes if you navigate to the mlflow ui you should see the experiments listed similar to below. From the UI you can visually. Select the best model, sorting the options by the RMSE and look at the durations too. Then once you click on specific models you can get metadata from the run, along with code snipets for how to make predictions with from PySpark and/or Pandas dataframes.
+![alt text](Images/ManualSelectionBestModel.gif)
 
 ## 2.4 Model Management (Saving and Loading Models with MLflow)
+While the UI is fairly useful in selected a single model and also registering it. Often we will need to select models a little more "programatically". Additionally we will also need to tag which models we want to move to staging, then which ones to move to prod. This is one of the stages of model management.
+
 ### 2.4.1 Where does experiment tracking fit into model management and MLops?
 Recommended reading: 
 * [Neptune.ai model management blog post](https://neptune.ai/blog/machine-learning-model-management). Be warned this is quite comprehensive
@@ -502,7 +504,11 @@ So how can we save all these models automatically, with versioning, and keeping 
 
     mlflow.log_artifact(local_path = "path/to/model.bin", artifact_path = "folder/for/models/)
 
-When you go back to the MLflow UI and click on the run. in the artifacts section you should see a folder containing the model. You can then simply download the model and run it. But there is a faster way to save and load the model
+When you go back to the MLflow UI and click on the run. in the artifacts section you should see a folder containing the model. You can then simply download the model and run it. NB with `auto_log()` the default path to artifacts is `./mlruns/<exp_num>/<run_id>/model/...`
+
+![alt text](Images/ManualSelectionOfModel.gif)
+
+But there is a faster way to save and load the model.
 
 ### 2.4.3 MLflow log_model()
 For example
@@ -587,24 +593,41 @@ NB This is a lower level version of the `mlflow module` which is used for active
 
 For example,
 
-* `client.list_experiments()`: Returns the experiments stored in the database.
-* `client.search_runs()`: find the runs you want.
+* `client.search_experiments()`: Returns the experiments stored in the database. NB These are in a paged list so filters can be chosen this way. [Documentation](https://mlflow.org/docs/latest/python_api/mlflow.html?highlight=search_experiments#mlflow.search_experiments)
 
+    ```
+    #View all experiments
+    Experiments = client.search_experiments()
+    for exp in Experiments:
+        print(f"Experiment#: {exp.experiment_id}, Experiment Name: {exp.name}")
+    ```
+* `client.search_runs()`: find the runs you want. [Documentation](https://mlflow.org/docs/latest/python_api/mlflow.client.html?highlight=client%20search_runs#mlflow.client.MlflowClient.search_runs)
+
+    ```
     from mlflow.entities import ViewType
 
+    #Select your chosen experiment
+    Exp_id = Experiments[0].experiment_id
+    Exp_name = Experiments[0].name
+    #Get the runs for this experiment
     runs = client.search_runs(
-        experiment_ids = '1',
+        experiment_ids = Exp_id,
         filter_string = "",
-        run_view_type = ViewType.Active_ONLY,
-        max_results = 5,
-        order_by = ["metrics.rmse ASC"]
-    )
+        run_view_type = ViewType.ACTIVE_ONLY,
+        max_results = 10,
+        order_by = ["metrics.val_rmse ASC"]
+        )
+    for run in runs:
+        print(f"run_id: {run.info.run_id}, val_rmse: {run.data.metrics['val_rmse']}")
+    ```
 
-**Essentially the client, is interacting with the database to get the values via python**.
+**Essentially the client is interacting with the database to get the values via python**.
 
 ### 2.5.3 Promoting Models
 
-1. **Registering models programatically**
+#### 2.5.3.1 Registering models programatically
+Just simply type the code below in. However, in this case a model is one theat performs a function and there are versions of the model which correlate to the runs stored. 
+
     ```
     import mlfow
 
@@ -616,18 +639,32 @@ For example,
     mlflow.register_model(model_uri=model_uri, name="nyc-taxi-regressor")
     ```
 
-2. **Transitioning Models programatically**
-    Checking current stages...
-    ```
+#### 2.5.3.2 Transitioning Models programatically
+
+The old way was to have two main stages `Staging` and `Production` however as of v2.9.0 of MLflow staging is being eased out and instead model versioning tags have been elevated.
+
+![alt text](Images/NewStagingOptions.png)
+
+MLflow is transitioning away from stages and elevating aliasing. From my reading this means that aliases are to be used when there is only one model, while tags are to be used when multiple models are to be used. In this notebook I'm providing the following
+
+| Aliases | Tags |
+|---------|------|
+| `Champion`: The best performing model in the test data. | `model-type`: The type of model it is | 
+| `Fastest`: This is the fastest resgistered model. | `evaluation-status: ____`: The status of whether it it pending/approved/failed.|
+| `Best`: This is the most/accurate model regardless of time. | `archived`: This model is to be archived. 
+|`Production`: The model currently in production | `rmse: _____`: The rmse score for the model. |
+|`Previous`: The previous model version in production.| 
+|`Staging`: The model used in the staging environment.| 
+  
+  
+##### Transitioning the old way
+
     model_name = "nyc-taxi-regressor"
     latest_versions = client.get_latest_versions(name=model_name)
 
     for version in latest_versions:
         print(f"Version: {version.version}, Stage: {version.current_stage})
-    ```
 
-    Transitioning models...
-    ```
     model_version = 4
     new_stage = "Staging"
 
@@ -637,11 +674,77 @@ For example,
         stage = new_stage,
         archive_existing_versions = False
     )
-    ```
+##### New way
 
-3. **Annotating models**
+In this way I'm going to evaluate the 10 selected models and programatically use Aliasing to select the best performing one. In my estimations this is a combination of both speed and accuracy. While this can be calculated in a more elegant manner I've picked the simple `rmse / time` where the smaller the value the better. You can see the coe snippet below for how I chose tags and aliases. NB Bear in mind MLflow does not do zero-indexing so you will have to edit this yourself.
     
-    For example add when the model was transitioned
+    import time
+
+    Champ_Version = 1
+    Fastest_Version = 1
+    Best_Version = 1
+    Champ_metric = float('inf')
+    Fastest_Time = float('inf')
+    Best_rmse = float('inf')
+
+    #Create a model
+    MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    client = mlflow.tracking.MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
+    Model_Name = "nyc-taxi-ride-duration-prediction"
+
+
+    for i in range(len(runs)):
+        #Register Version
+        run_id = runs[i].info.run_id
+        model_run_uri = 'runs:/'+ run_id +'/model'
+        mlflow.register_model(model_uri=model_run_uri, name=Model_Name)
+
+        model = mlflow.pyfunc.load_model(model_run_uri)
+        run_dict = runs[i].to_dictionary()
+
+        start_time = time.time()
+        y_pred = model.predict(X_test)
+        end_time = time.time()
+
+        code_duration = end_time - start_time
+        test_rmse = mean_squared_error(y_test.to_numpy(), y_pred, squared=False)
+        eval_metric = test_rmse / code_duration
+
+        if eval_metric < 100:
+            status = "approved"
+        else:
+            status = "failed"
+        #Apply tags
+        client.set_model_version_tag(name=Model_Name, version=i+1, key='time', value=code_duration)
+        client.set_model_version_tag(name=Model_Name, version=i+1, key='test-rmse ', value=test_rmse)
+        client.set_model_version_tag(name=Model_Name, version=i+1, key='model-type ', value=run_dict['data']['tags']['model'])
+        client.set_model_version_tag(name=Model_Name, version=i+1, key='evaluation-status ', value=status)
+        
+        #Comparisons for aliases
+        if code_duration < Fastest_Time:
+            Fastest_Time = code_duration
+            client.set_registered_model_alias(name=Model_Name, alias="Fastest", version=i+1)
+            Fastest_Version = i
+        if eval_metric > Champ_metric:
+            Champ_metric = eval_metric
+            client.set_registered_model_alias(name=Model_Name, alias="Champion", version=i+1)
+            Champ_Version = i
+        if test_rmse < Best_rmse:
+            Best_rmse = test_rmse
+            client.set_registered_model_alias(name=Model_Name, alias="Best", version=i+1)
+            Best_Version = i
+
+    print(f"Champion is version {Champ_Version}, with an eval_metric of {eval_metric: .3f}")
+    print(f"Fastest is version {Fastest_Version}, with an prediction duration of {code_duration: .3f}")
+    print(f"Best is version {Champ_Version}, with a rmse of {test_rmse: .3f}")
+
+When you naviagate back to the MLflow UI you should see something similar to the screenshot below. Where Version 1 is both the `best` and the `champion` version. 
+
+![Evaluation of Models with Aliases and Tags](Images/RegisterModels_AliasingTags.png)
+
+#### 2.5.3.3 Annotating models
+Means of adding a description to the model has not changes. For example add when the model was transitioned
     ```
     from datetime import datetime
     
@@ -653,10 +756,10 @@ For example,
     )
     ```
 
-4. **Test run of the model**
+#### 2.5.3.4 Test run of the model
     
-    You can set up a simple run of the model to check that it is working e.g. these functions
-    ```
+You can set up a simple run of the model to check that it is working e.g. these functions
+
     from sklearn.metrics import mean_squared_error
     import pandas as pd
 
@@ -690,11 +793,10 @@ For example,
         model = mlflow.pyfunc.load_model(f"models:/{name}/{stage}")
         y_pred = model.predict(X_test)
         return {"rmse": mean_squared_error(y_test, y_pred, squared=False)}
-    ```
 
-    Then simply download your test data, preprocessor, and model.
 
-    ```
+Then simply download your test data, preprocessor, and model.
+
     # Load in your data
     df = read_dataframe("data/green_tripdata_2021-03.csv")
     
@@ -719,10 +821,9 @@ For example,
 
     print("Staging Model Version: ...")
     %time test_model(name=model_name, stage="Staging", X_test=X_test, y_test=y_test)
-    ```
 
 From this if it is better you can transition the model to prod.
-    ```
+
     model_version = 4
     new_stage = "Production"
 
@@ -732,7 +833,9 @@ From this if it is better you can transition the model to prod.
         stage = new_stage,
         archive_existing_versions = False
     )
-    ```
+
+Or you can simply add in the code snippet I did earlier with the Aliasing and Tagging
+
 ## 2.6 MLflow in Practice
 
 ## 2.7 MLflow: benefits, limitations, and alternatives
