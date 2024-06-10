@@ -4,6 +4,8 @@ The goal of this homework is to train a simple model for predicting the duration
 
 We'll use [the same NYC taxi dataset](https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page), the **Yellow** taxi data for 2023. 
 
+To see my code please look at the [linked pipeline](./Practice/mlops/mlops/homework_03)
+
 ## Question 1. Run Mage
 
 First, let's run Mage with Docker Compose. Follow the quick start guideline. 
@@ -11,7 +13,8 @@ First, let's run Mage with Docker Compose. Follow the quick start guideline.
 What's the version of Mage we run? 
 
 (You can see it in the UI)
-
+### Answer
+**The version of mage is v0.9.71**
 
 ## Question 2. Creating a project
 
@@ -23,6 +26,9 @@ How many lines are in the created `metadata.yaml` file?
 - 45
 - 55
 - 65
+
+### Answer 
+**There are 55 lines of code**
 
 ## Question 3. Creating a pipeline
 
@@ -36,6 +42,9 @@ How many records did we load?
 - 3,203,766
 - 3,403,766
 - 3,603,766
+
+### Answer
+** There are 3,403,766 records loaded
 
 ## Question 4. Data preparation
 
@@ -62,6 +71,25 @@ def read_dataframe(filename):
     return df
 ```
 
+### My code adjustment
+```
+@transformer
+def transform_dataframe(df) -> pd.DataFrame:
+
+    df.tpep_dropoff_datetime = pd.to_datetime(df.tpep_dropoff_datetime)
+    df.tpep_pickup_datetime = pd.to_datetime(df.tpep_pickup_datetime)
+
+    df['duration'] = df.tpep_dropoff_datetime - df.tpep_pickup_datetime
+    df.duration = df.duration.dt.total_seconds() / 60
+
+    df = df[(df.duration >= 1) & (df.duration <= 60)]
+
+    categorical = ['PULocationID', 'DOLocationID']
+    df[categorical] = df[categorical].astype(str)
+    
+    return df
+```
+
 Let's adjust it and apply to the data we loaded in question 3. 
 
 What's the size of the result? 
@@ -71,6 +99,9 @@ What's the size of the result?
 - 3,103,766
 - 3,316,216 
 - 3,503,766
+
+### Answer
+There are 3,316,216 rows
 
 ## Question 5. Train a model
 
@@ -90,6 +121,9 @@ Hint: print the `intercept_` field in the code block
 - 24.77
 - 27.77
 - 31.77
+
+### Answer
+The intercept is 24.77
 
 ## Question 6. Register the model 
 
@@ -132,6 +166,7 @@ And add it to the docker-compose.yaml:
     networks:
       - app-network
 ```
+** NB On my set up 5000 was already taken so build the solution with the ports `5030` for the `mlflow.dockerfile` and `5030:5000` for the `docker.compose.yaml`.
 
 Note that `app-network` is the same network as for mage and postgre containers.
 If you use a different compose file, adjust it.
@@ -156,6 +191,8 @@ Find the logged model, and find MLModel file. What's the size of the model? (`mo
 
 > Note: typically we do two last steps in one code block 
 
+### Answer
+4,534 bytes
 
 ## Submit the results
 
