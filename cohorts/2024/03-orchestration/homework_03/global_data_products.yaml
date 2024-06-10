@@ -1,0 +1,10 @@
+homework_03_taxidata_v0:
+  object_type: pipeline
+  object_uuid: load_data
+  outdated_after:
+    seconds: 600
+  project: homework_03
+  repo_path: /home/src/mlops/homework_03
+  settings:
+    build_train_set:
+      partitions: 1
