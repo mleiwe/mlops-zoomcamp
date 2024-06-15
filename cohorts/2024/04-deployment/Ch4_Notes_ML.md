@@ -239,7 +239,7 @@ mlflow server --backend-store-uri=sqlite:///mlflow.db --default-artifact-rot=s3:
 ```
 
 ### Run your experiments
-The example is in `random-forest.ipynb` but the key code block is below
+The example is in `random-forest.ipynb` but the key code block is below this has the answers
 ```
 with mlflow.start_run():
     params = dict(max_depth=20, n_estimators=100, min_samples_leaf=10, random_state=0)
@@ -273,16 +273,105 @@ Given that we have a dictionary vectoriser and the model. We need to add the mlf
 import mlflow
 from mlflow.tracking import MlflowClient
 ```
-And also add a lot of bulky code. A faster way would be to 
+And also add a lot of bulky code in order to save the model and dictionary vectoriser to a temporary location etc.
 
+A faster way would be to save a pipeline that contains the dictionary vecotriser and the model. I.e. this bit is added to your experiment and the whole pipeline be saved.
 
 ```
-RUN_ID = os.getenv('RUN_ID')
+from sklearn import make_pipeline
 
-logged_model = f's3://mlflow-models-alexey/1/{RUN_ID}/artifacts/model'
-# logged_model = f'runs:/{RUN_ID}/model'
+pipeline = make_pipeline(
+    DictVectorizer()
+    RandomForrestRegressor(**params, n_jobs=-1)
+)
+```
+
+Then we can alter our `predict.py` code
+```
+import os
+import pickle
+
+import mlflow
+from flask import Flask, request, jsonify
+
+MLFLOW_TRACKING_URI = 'http://127.0.0.1:5000'
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+
+RUN_ID = 'e1efc53e9bd149078b0c12aeaa635df'
+logged_model = f'runs:/{RUN_ID}/model'
 model = mlflow.pyfunc.load_model(logged_model)
 
+def prepare_features(ride):
+    features = {}
+    features['PU_DO'] = '%s_%s' % (ride['PULocationID'], ride['DOLocationID'])
+    features['trip_distance'] = ride['trip_distance']
+    return features
 
+def predict(features):
+    #No need for dictionary vectorizer!#
+    preds = model.predict(features)
+    return float(preds[0])
+
+app = Flask('duration-prediction')
+
+@app-route('/predict', methods=['POST'])
+def predict_endpoint():
+    ride = request.get_json()
+
+    features = prepare_features(ride)
+    pred = predict(features)
+
+    result = {
+        'duration': pred,
+        'model_version': RUN_ID
+    }
+
+    return jsonify(result)
+
+if __name__ == "__main__":
+    app.run(debug=True, host='0.0.0.0', port=9696)
 ```
+NB you can also change the the way to load the model based on the stage, or alias, or s3 bucket, etc. See the [full documentation for pyfunc.load_model](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html?highlight=pyfunc%20load_model#mlflow.pyfunc.load_model) for all the details but I will list the key ones below
+
+**For stage (to be depreciated eventually)**
+```
+model = mlflow.pyfunc.load_model(f"models://{name}/{stage}")
+```
+
+**For aliases**
+```
+alias = champion
+champ_model = mlflow.pyfunc.load_model(f"models:/{name}@{alias}")
+```
+
+**For S3/google cloud storage bucket**
+```
+#For S3
+mlflow.set_tracking_uri("s3://<bucket-name>") #only when creating model
+model = mlflow.pyfunc.load_model(s3://my_bucket/path/to/model)
+
+#For GoogleCloud Storage
+mlflow.set_tracking_uri("gs://<bucket-name>/mlflow") #only when creating model
+model = mlflow.pyfunc.load_model(gs://my_bucket/path/to/model)
+```
+
+NB Alexey also recommends storing the run name so you can find out exactly which one it is from the registered model database.
+
+### Becoming independent from the tracking server
+Currently the code is dependent on being able to access the tracking server. However there could be issues with the server and it may go down for any number of reasons (e.g. Heavy Traffic). Therefore we may want to be able to use our model independently of the server.
+
+In this case we can save our model(s) to a cloud location to use. And if it is google cloud storage just switch the `s3` to `gs`.
+
+So this means that our logged model is now...
+```
+logged_model = f's3://mlflow-models-alexey/1/{RUN_ID}/artifacts/model'
+```
+NB In your deployment you can deploy with the `RUN_ID` as an environmental variable too.
+
+## 4.4 (Optional) Streaming: Deploying models with Kinesis and Lambda
+
+
+
+
+
 
