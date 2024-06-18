@@ -7,6 +7,7 @@ WORKDIR /app
 COPY ["Pipfile", "Pipfile.lock", "./"]
 RUN pipenv install --system --deploy
 
-COPY ["Month_predict.py", "./"]
+COPY ["predict.py", "./"]
+EXPOSE 9696
 
-ENTRYPOINT ["python", "Month_predict.py"]
+ENTRYPOINT ["gunicorn", "--bind=0.0.0.0:9696", "--timeout=300", "predict:app"]
