@@ -369,8 +369,64 @@ logged_model = f's3://mlflow-models-alexey/1/{RUN_ID}/artifacts/model'
 NB In your deployment you can deploy with the `RUN_ID` as an environmental variable too.
 
 ## 4.4 (Optional) Streaming: Deploying models with Kinesis and Lambda
+Kinesis and Lamda are AWS services. Kinesis is for streaming events and calling lambda.
 
+**What are lambda functions?**
+Lambda functions are serverless computing services, i.e. you can run code without provisioning or managing servers. Typically the code will run in response to events or HTTP requests, it automatically scales up and down resources as needed. 
+* Lambda functions support: Node.js, Python, Java, C#, Go, Ruby, plus a few others
+* Can be triggered by AWS services such as [S3 buckets](https://aws.amazon.com/s3/), [DynamoDB](https://aws.amazon.com/dynamodb/), [API Gateway](https://aws.amazon.com/api-gateway/), or even custom events
+* Lambda functions work on a pay-per-use pricing model. So you pay based on the number of requests and the compute time consumed. *So be careful when debugging, and also exposing the address*.
 
+The equivalent applications in GCP and Azure are [Google Cloud Functions](https://cloud.google.com/functions?hl=en) and [Azure Functions](https://azure.microsoft.com/en-us/products/functions).
+
+**What is Kinesis?**
+AWS Kinesis is a fully managed service that is used for real-time data streaming and analytics. There are four main parts
+* **Kinesis Data Streams**: This is the core component that allows you to ingest and process large streams of data records in real time. It orders, buffers, and persists data streams. This helps you build apps that process data from various sources such as website clickstreams, IOT sensors, and social media feeds.
+* **Kinesis Data Firehose**: This is a service that allows you to capture, transform, and load streaming data into AWS data stores such as [S3 buckets](https://aws.amazon.com/s3/), [Redshift](https://aws.amazon.com/redshift/) (Uses SQL to analyse structured and sem-structured data at scale), [Amazon OpenSearchService](https://aws.amazon.com/what-is/opensearch/) (I believe this helps you search for, and process data), etc.
+* **Kinesis Data Analytics**: Allows you to run SQL or Java code on streaming data sources to perform analytics and gain insights in real-time.
+* **Kinesis Video Streams**: Securely streams video from connected devices to AWS for analytics, ML, and/or other processing.
+
+GCP and Azure equivalents are [Cloud Dataflow](https://cloud.google.com/dataflow?hl=en) and [Stream Analytics](https://azure.microsoft.com/en-us/products/stream-analytics) respectively. In GCP there's [Cloud Pub/Sub](https://cloud.google.com/pubsub/?hl=en) which is similar to Kinesis Data Streams. [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) would be similar to Kinesis Data Streams too.
+
+### When and when not to use Lambda and Kinesis Data Streams
+#### When to use Lambda and Data Streams
+A combination of Lambda and Kinesis works really well when you need to work on a per-record basis. You can still recieve batches but all the transformation will happen individually. See the image below.
+
+![Best Practives for Consuming Amazon Kinesis data](Images/Best-practices-for-consuming-Amazon-Kinesis-1-1.jpg)
+Image taken from taken from [*Best Practives for Consuming Amazon Kinesis data*](https://aws.amazon.com/blogs/big-data/best-practices-for-consuming-amazon-kinesis-data-streams-using-aws-lambda/)
+
+#### When not to use Lambda and Data Streams
+Each lambda function takes in individual records, or groups (known as *shards*) and is emphemeral i.e. it doesn't persist. This makes it hard for lambda functions to work if...
+1. The data is either spread across multiple shards.
+2. The data is "stateful" i.e. there are real-time updates to the data structure that require different lambda functions.
+3.  You need to buffer large amounts of data.
+
+According to [Best practices for consuming Amazon Kinesis Data Streams using AWS Lambda](https://aws.amazon.com/blogs/big-data/best-practices-for-consuming-amazon-kinesis-data-streams-using-aws-lambda/) for the first two cases [Kinesis Data Analytics](https://docs.aws.amazon.com/kinesisanalytics/latest/dev/what-is.html) should be used instead of Data Streams, while in the third instance [AWS Kinesis Firehose](https://aws.amazon.com/firehose/) should be used instead.
+
+### Two ways to maps an AWS Lambda Consumer
+AWS Lambda can map in two different ways to consume/use data records; standard iterators, and [enhanced fan-out (EFO) consumers](https://docs.aws.amazon.com/streams/latest/dev/enhanced-consumers.html). Standard ones are generally cheaper, and have more limits. While EFOs can handle more data faster, and send it to more places, but at a cost.
+
+* **Standard iterators**: Lambda polls each shard in the stream once per second with through a HTTP protocol. When more records are available than it manage at once it will keep processing in batches until it can catch up with the stream again. The standard iterators also share the read-throughput with other consumers of the stream. There is a 2MB/sec output limit on each shard. You can increase this by utilising more, but smaller shards but the limit is set to five reads per second per [shard](https://docs.aws.amazon.com/streams/latest/dev/service-sizes-and-limits.html)
+* **Enhanced Fan Outs**: To get around this you can create EFOs. Each EFO will recieve its own data stream, whose records will persist for longer, and can be delivered faster (<70 milliseconds). NB There is a limit of 20 EFOs per stream.
+
+### Monitoring your Consumers
+AWS recommends to use standard consumers when you have 3 or fewer consumers on a data stream, and low latency is not critical. This is because EFOs run at an additional cost per EFO consumer and per GB of data retrieved. NB These charges can be monitored with [AWS Cloud Watch](https://aws.amazon.com/cloudwatch/). There are a host of different aspects you need to consider which I believe will be addressed in Module 5. 
+
+### Aim of this module
+Our aim is to take the model that we built in 4.3 and get it to run in AWS.
+i.e Pull the data and the model from the S3 bucket and pretend it is like a stream of data.
+
+This is based off the [AWS Tutorial: Using Amazon Lambda with Amazon Kinesis](https://docs.aws.amazon.com/lambda/latest/dg/with-kinesis-example.html)
+
+### How to set it up
+
+ 
+### Useful resources
+But I found these blog posts helpful
+* [Best practices for consuming Amazon Kinesis Data Streams using AWS Lambda](https://aws.amazon.com/blogs/big-data/best-practices-for-consuming-amazon-kinesis-data-streams-using-aws-lambda/)
+* [How Lambda processes records from Amazon Kinesis Data Streams](https://docs.aws.amazon.com/lambda/latest/dg/with-kinesis.html#:~:text=You%20can%20use%20a%20Lambda,consumer%20with%20enhanced%20fan%2Dout.)
+* [AWS Lambda function types](https://docs.aws.amazon.com/lambda/latest/dg/services-kinesis-create.html)
+* [Enhanced Fan Output documentation](https://docs.aws.amazon.com/streams/latest/dev/enhanced-consumers.html)
 
 
 
