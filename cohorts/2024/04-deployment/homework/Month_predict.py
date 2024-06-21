@@ -2,7 +2,7 @@ import pickle
 from flask import Flask, request, jsonify
 import pandas as pd
 
-with open('model.bin', 'rb') as f_in:
+with open('model2.bin', 'rb') as f_in:
     dv, model = pickle.load(f_in)
 
 categorical = ['PULocationID', 'DOLocationID']
@@ -29,7 +29,7 @@ def predict(YEAR,MONTH):
     df = read_data(url_address)
     print("Transforming data")
     dicts = df[categorical].to_dict(orient='records')
-    X_val = dv.transform(dicts)
+    # X_val = dv.transform(dicts)
     print("Making Predictions")
     y_pred = model.predict(X_val)
 
