@@ -757,7 +757,7 @@ This can be done in the same way as the `ride_events` kinesis stream.
 #### Changes to the Lambda function
 NB Because this is streaming data we will need to add a whole load more data to the outputs so that they can be identified easily. e.g. Customer ids, model names, versions, etc. This keeps the data better organised and easier to identify in the future. We can reconfigure the outputs to reflect this, for now I have set them as strings.
 
-###### Introducing Boto3
+##### Introducing Boto3
 This will require [boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) to send the data to the next kinesis stream. To cut a long story very short, Boto3 is used to allow python to interact with AWS services. Boto3 can be instatiated by
 ```python
 kinesis_client = boto3.client('kinesis')
@@ -765,8 +765,7 @@ kinesis_client = boto3.client('kinesis')
 
 And each record can be added with the function `put_record` [docs](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/kinesis/client/put_record.html#put-record). NB there is also `put_records` but this is a little more expensive for smaller data. For larger batches it is cheaper than `put_record`.
 
-For put record we have the following parts of data
-
+For put record we have the following parts of data, in our situation we will use `StreamName`, `Data`, and `PartitionKey`.
 ```python
 response = client.put_record(
     StreamName='string', #Can make it configurable with os.getenv
@@ -777,7 +776,7 @@ response = client.put_record(
     StreamARN='string' #Optional
 )
 ```
-
+These changes can be seen in the current lambda function below
 
 ##### Current Lambda function
 ```python
@@ -835,7 +834,119 @@ def lambda_handler(event, context):
         'predictions': predictions
     }
 ```
-### Test the setup
+#### Updating Permissions
+Currently our IAMS policy only has permission to read, but not to write to a kinesis stream.
+
+So we need to create a new policy and add it to the role.
+1. Navigate to the policies page, and select 'Create policy' on the top right
+    ![alt text](Images/Policy_Create.png)
+2. Set up the policy
+    
+    **Settings**
+    * *Service*: `Kinesis`
+    * *Actions allowed*: Write-> `PutRecord` and `PutRecords`
+    * *Resources*: Specify the Stream ARN. If you specify the ARN then the rest of the data should autofill
+    ![Specifying ARN](Images/Policy_SpecifyARN.png)
+3. Click next to go to "Review and Create"
+    **Settings**
+    * *Policy name*: `lambda_kinesis_write_to_ride_predictions`
+    * *Description* : `Allows the function/user/role to write records to the ride_predictions stream`
+
+    Now select create policy
+4. Attach policy to the role. You can do this by navigating back to the roles section and then just add the policy you've created just like before
+![Attached policy](Images/Roles_CustomerPolicyAttached.png)
+5. Test now you should be able to deploy, if there is an error check for typos. e.g. I typed in `ride_prediction` instead of `ride_predictions` for the stream name so it didn't work.
+
+#### Reading from the stream
+You can navigate to your terminal and read from the stream with the following command.
+```bash
+KINESIS_STREAM_OUTPUT='ride_predictions'
+SHARD='shardId-000000000000'
+
+SHARD_ITERATOR=$(aws kinesis \
+    get-shard-iterator \
+        --shard-id ${SHARD} \
+        --shard-iterator-type TRIM_HORIZON \
+        --stream-name ${KINESIS_STREAM_OUTPUT} \
+        --query 'ShardIterator' \
+)
+
+RESULT=$(aws kinesis get-records --shard-iterator $SHARD_ITERATOR)
+
+echo ${RESULT} | jq -r '.Records[0].Data' | base64 --decode
+``` 
+
+NB [jq](https://ioflood.com/blog/jq-linux-command/#:~:text=The%20jq%20command%20in%20Linux%20is%20a%20versatile%20tool%20that,simplify%20working%20with%20JSON%20data.) is a tool that allows you to parse and manipulate JSON data from your command line. It's linux based, but you can install it on Mac with `brew install jq` and on windows with `winget install jqlang.jq`.
+
+#### Adding the model
+So far, we've been able to read in the Kinesis stream and output the predictions into another stream. However, to make a valid prediction rather that just returning "10.0" we need to load in the model and to do this we need to execute the lambda function within a docker.
+
+So first using VS Code (or another IDE) you can copy and paste your lambda function across and save it as `lambda_function.py`. NB For ease you can see the final version from Alexey [here](https://github.com/mleiwe/mlops-zoomcamp/tree/main/04-deployment/streaming).
+
+The main task is uploading the model from our S3 bucket and then using the prediction.
+
+So in the lambda code we can load in the model from our MLflow s3 bucket with the following code snippet...
+```python
+import mlflow
+RUN_ID = os.getenv('RUN_ID')
+
+logged_model = f's3://mlflow-models-alexey/1/{RUN_ID}/artifacts/model'
+# logged_model = f'runs:/{RUN_ID}/model'
+model = mlflow.pyfunc.load_model(logged_model)
+``` 
+In this case the RUN_ID will be an environmental variable that can be set in our terminal.
+
+
+The final predict function will therefore look like this.
+```python
+def predict(features):
+    pred = model.predict(features)
+    return float(pred[0])
+```
+NB At this point it is worth [testing](../../../04-deployment/streaming/test.py) the predict function so that we know it works locally before adding it to the online lambda function.
+
+If you don't want to click the link, you can just copy and paste the code below.
+
+```python
+import lambda_function
+
+event = {
+    "Records": [
+        {
+            "kinesis": {
+                "kinesisSchemaVersion": "1.0",
+                "partitionKey": "1",
+                "sequenceNumber": "49630081666084879290581185630324770398608704880802529282",
+                "data": "ewogICAgICAgICJyaWRlIjogewogICAgICAgICAgICAiUFVMb2NhdGlvbklEIjogMTMwLAogICAgICAgICAgICAiRE9Mb2NhdGlvbklEIjogMjA1LAogICAgICAgICAgICAidHJpcF9kaXN0YW5jZSI6IDMuNjYKICAgICAgICB9LCAKICAgICAgICAicmlkZV9pZCI6IDI1NgogICAgfQ==",
+                "approximateArrivalTimestamp": 1654161514.132
+            },
+            "eventSource": "aws:kinesis",
+            "eventVersion": "1.0",
+            "eventID": "shardId-000000000000:49630081666084879290581185630324770398608704880802529282",
+            "eventName": "aws:kinesis:record",
+            "invokeIdentityArn": "arn:aws:iam::387546586013:role/lambda-kinesis-role",
+            "awsRegion": "eu-west-1",
+            "eventSourceARN": "arn:aws:kinesis:eu-west-1:387546586013:stream/ride_events"
+        }
+    ]
+}
+
+
+result = lambda_function.lambda_handler(event, None)
+print(result)
+```
+
+Now we can test this in the terminal by navigating to the folder where the `lambda_function.py` and `test.py` are, and then executing the test.py with
+
+```bash
+export PREDICTIONS_STREAM_NAME="ride_predictions"
+export RUN_ID="e1efc53e9bd149078b0c12aeaa6365df"
+export TEST_RUN="True"
+python test.py
+```
+
+NB We created an additional argument `TEST_RUN` which only when false will we add data to the `ride_predictions` stream 
+### Test the final setup
 
 #### Clean up your resources (deleting them)
 
