@@ -143,7 +143,7 @@ if __name__.py == "__main__":
 
 ```
 Then you can run the predict app locally with
-```
+```bash
 $python predict.py
 ```
 
@@ -151,7 +151,7 @@ $python predict.py
 
 You can test out the predict function with a test.py script
 
-```
+```python
 import requests
 
 ride_info = {
@@ -162,7 +162,6 @@ ride_info = {
 
 url = 'http://127.0.0.1:9696/predict' 
 requests.post(url, json=ride_info)
-
 ```
 NB We use quotes here so it can be a `.json` in the future.
 
@@ -179,13 +178,13 @@ There are also other options such as [Django](https://www.djangoproject.com/) to
 
 to run Flask though gunicorn as long as gunicorn is installed just type...
 
-```
+```docker
 $ gunicorn --bind=0.0.0.0:9696 predict:app
 ```
 #### Pipenv --dev
 NB The `requests` library is needed for development only so what we need to do is to create a dev environment that contains the `requests` library as well as what is needed for production.
 
-```
+```bash
 pipenv install --dev requests
 ```
 
@@ -193,7 +192,7 @@ pipenv install --dev requests
 #### Create the dockerfile
 So create the dockerfile to build the docker image
 
-```
+```docker
 FROM python:3.9-slim #use the slim version to be more efficient
 RUN pip install -U pip #just make sure the pip version is correct
 RUN pip install pipenv
@@ -211,12 +210,12 @@ EXPOSE 9696
 ENTRYPOINT ["gunicorn", "--bind=0.0.0.0:9696", "predict:app"]
 ```
 #### Build the image
-```
+```bash
 $ docker build -t ride-duration-prediction-service:v1 .
 ```
 
 #### Test/run the image
-```
+```bash
 $ docker run -it --rm -p 9696:9696 ride-duration-prediction-service:v1
 ```
 `-it`: Interactive mode, so cntrl + c will exit.
@@ -240,7 +239,7 @@ mlflow server --backend-store-uri=sqlite:///mlflow.db --default-artifact-rot=s3:
 
 ### Run your experiments
 The example is in `random-forest.ipynb` but the key code block is below this has the answers
-```
+```python
 with mlflow.start_run():
     params = dict(max_depth=20, n_estimators=100, min_samples_leaf=10, random_state=0)
     mlflow.log_params(params)
@@ -277,7 +276,7 @@ And also add a lot of bulky code in order to save the model and dictionary vecto
 
 A faster way would be to save a pipeline that contains the dictionary vecotriser and the model. I.e. this bit is added to your experiment and the whole pipeline be saved.
 
-```
+```python
 from sklearn import make_pipeline
 
 pipeline = make_pipeline(
@@ -287,7 +286,7 @@ pipeline = make_pipeline(
 ```
 
 Then we can alter our `predict.py` code
-```
+```python
 import os
 import pickle
 
@@ -334,18 +333,18 @@ if __name__ == "__main__":
 NB you can also change the the way to load the model based on the stage, or alias, or s3 bucket, etc. See the [full documentation for pyfunc.load_model](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html?highlight=pyfunc%20load_model#mlflow.pyfunc.load_model) for all the details but I will list the key ones below
 
 **For stage (to be depreciated eventually)**
-```
+```python
 model = mlflow.pyfunc.load_model(f"models://{name}/{stage}")
 ```
 
 **For aliases**
-```
+```python
 alias = champion
 champ_model = mlflow.pyfunc.load_model(f"models:/{name}@{alias}")
 ```
 
 **For S3/google cloud storage bucket**
-```
+```python
 #For S3
 mlflow.set_tracking_uri("s3://<bucket-name>") #only when creating model
 model = mlflow.pyfunc.load_model(s3://my_bucket/path/to/model)
@@ -420,9 +419,430 @@ This is based off the [AWS Tutorial: Using Amazon Lambda with Amazon Kinesis](ht
 
 ### How to set it up
 
+#### Requirements
+
+You can check your AWS CLI with ...
+```bash
+aws --version
+```
+You should see something greater than the values below
+```bash
+aws-cli/2.13.27 Python/3.11.6 Linux/4.14.328-248.540.amzn2.x86_64 exe/x86_64.amzn.2
+```
+If not you can [update the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) with one of the commands below.
+
+**For Linux**
+
+If this is the first time installing or updating you need to remove the pre-installed yum version first
+```bash
+sudo yum remove awscli
+```
+Then you can update with either...
+
+*Linux x86 (64-bit)*
+```bash
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+```
+Or Linux ARM
+```bash
+curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+```
+**For Mac**
+```bash
+curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
+sudo installer -pkg AWSCLIV2.pkg -target /
+```
+*NB For long commands, an escape character `\` is used to split a command over multiple lines.*
+
+**For Windows**
+
+Either download and run the [AWS CLI MSI installer](https://awscli.amazonaws.com/AWSCLIV2.msi) or in a terminal type
+```
+msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi
+```
+
+In my case I'm running
+```
+aws-cli/2.16.11 Python/3.11.8 Darwin/22.3.0 exe/x86_64
+```
+
+#### Create the execution role
+Once you've logged into your IAMs AWS account (NB not the administrator one)
+Navigate to the IAMs dashboard and create a role
+
+**Settings**
+* Trusted entity type: `AWS service`
+* Use case: `Lambda`
+![Role Settings](Images/CreateRoleSettings.png)
+
+*Add permissions*
+Permissions policies are a set of permissions that have already been pre-defined. You can select the pre-defined role `AWSLambdaKinesisExecutionRole` by clicking on the small "+" icon to the side of the role you can see the permissions granted. Specifically the `AWSLambdaKinesisExecutionRole` has the permissions that allow the lambda function to read items from Kinesis and write logs to CloudWatch logs.
+
+![How to find pre-set permissions](Images/AWS_LambdaKinesisPermissions.gif)
+
+Scroll down and click next to Name, review, and create the role.
+
+Just assign the name as `lambda-kinesis-role` you can leave the rest of the entries in as default. So scroll down to the bottom and select the option "Create role". Once done you will be re-directed to the main roles page and you should see your role appearing. In the screen shot below it is in the bottom. 
+![alt text](Images/RoleCreated_Success.png)
+
+Also remember to attach the permissions to the role afterward too. If it didn't do this click on the `lambda-kinesis-role` and on the role's permissions pane you should be able to attach the required policies.
+
+![How to attach policies](Images/Roles_AttachPolicies.png)
+
+#### Create the function
+1. Create a lambda function by navigating to the lambda fucntion setting. This can be easily done through the search bar. Or through the "Recently visted" pane, or the "All Services" option on the left hand side menu.
+
+![alt text](Images/GoToLambda.png) 
+
+Then once in the lambda function section select "Create Function" (big orange button)
+
+**Settings**
+* `Author from Scratch`
+
+*Basic Information*
+* Function name: `ride-duration-prediction-test`
+* Runtime: `Python 3.9`
+* Architecture: `x86_64`
+* Permissions: `lambda-kinesis-role` NB here click on "Change default execution role" to select a pre-existing role"
+
+Then scroll down to create function. (No need to alter any of the advanced settings for now). You will then be navigated to to the page for your new function.
+
+![Lambda main page](Images/LambdaFunctionCreationSuccess.png)
+
+#### Test the Lambda function
+On the code source tab you are now able to go in and edit the code. Specifically the `lambda function`
+
+The `lambda handler` is pre-configured to have two inputs
+* `event`: This is the data that triggers the function. The lambda function will use this even to process the data. It can be in various forms.
+    * For API Gateway events, it will contain details about the HTTP request e.g. headers, query parameters, body, etc.
+    * For S3 events, it will contain details about the S3 object that triggered the event
+    * For DynamoDB events, it will contain details about the DynamoDB data operations
+* `context`: This is an object that provides methods and properties with information about the invocation, function, and execution environment. It is an optional argument and mainly used for logging or accessing details about the Lambda execution environment. Some example properties are...
+    * `function_name`: The name of the Lambda function
+    * `memory_limit_in_mb`: The configured memory limit
+    * `aws_request_id`:  The unique request ID
+    * `log_group_name`: The CloudWatch log group name
+    * `log_stream_name`: The CloudWatch log stream name
+    * `get_remaining_time_in_millis()` method to get the remaining milliseconds before the lambda execution times out
+
+In our case we are going to be sending a JSON so in our test case we want to be able to see that the JSON is recieved correctly, and also that we generate a 200 status code *(If you want to understand status codes the [wiki](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes#:~:text=1xx%20informational%20response%20%E2%80%93%20the%20request,syntax%20or%20cannot%20be%20fulfilled) article is actually pretty good.)*. 
+
+Therefore we initially edit the code as follows...
+
+```python
+import json
+
+def lambda_handler(event, context):
+    print(json.dumps(event)) #Converts the JSON input into a dictionary
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Hello from Lambda!')
+    }
+
+```
+Now we can deploy the function to make the changes live then we can configure the test event.
+
+![How to configure test event](Images/Lambda_ConfigureTestEvent.png)
+
+In the pop up modal our settings are as follows...
+
+**Settings**
+
+* *Test event action*: `Create new event`
+* *Event name*: `test`
+* *Event sharing settings*: `Private`
+* *Event JSON*: 
+    ```python
+    {
+        "key1": "value1",
+        "key2": "value2",
+        "key3": "value3"
+    }
+    ```
+Now save it, and the modal should close. And when you click Test the output JSON should appear.
+
+![Basic Lambda Test Function](Images/AWS_LambdaTestFunction.gif)
+
+In reality our test function will be more complex, but it is recommended to structure it so you can test each step sequentially.
+
+So now the lambda function is created, we now have to be able to send kinesis stream events to it. There at this testing phase it is recommended to keep the `print(json.dumps(event))` code there are as a means to check if we are recieving the stream correctly.
+
+NB I showed how to do this with the UI, but it can also be done from the CLI with the following steps
+
+1. Create a directory for the project and cd to that directory
+    ```bash
+    mkdir kinesis-tutorial
+    cd kinesis-tutorial
+    ```
+2. Write/save your lambda function into the directory
+3. Create a deployment package (aka zip it)
+    ```bash
+    zip function.zip <filename>
+    ```
+4. Create a Lambda function with the `create-function` command.
+    ```bash
+    aws lambda create-function --function-name ProcessKinesisRecords \
+    --zip-file fileb://function.zip --handler index.handler --runtime nodejs18.x \
+    --role arn:aws:iam::111122223333:role/lambda-kinesis-role
+    ```
+    NB Make sure you have got the `lambda function arn`
+5. You can invoke a test with
+    ```bash
+    aws lambda invoke --function-name ProcessKinesisRecords \
+    --cli-binary-format raw-in-base64-out \
+    --payload file://input.txt outputfile.txt
+    ```
+    NB The `cli-binary-format` option is required if you're using AWS CLI version 2. To make this the default setting, run `aws configure set cli-binary-format raw-in-base64-out`.
+
+#### Create a Kinesis stream
+You can easily create a Kinesis stream with AWS CLI
+```bash
+aws kinesis create-stream --stream-name lambda-stream --shard-count 1
+```
+But the UI is better for when you are learning, so that's what I'll do here. Lets first navigate to the Kinesis Landing Page, it should look similar to the screenshot below.
+![Kinesis Landing Page](Images/KinesisLandingPage.png)
+
+Select `Kinesis Data Streams` and click `Create data stream`. NB Make sure you're in the same AWS region to save on prices etc.
+
+**Settings**
+* *Data stream name*: `ride_events`
+* *Data stream capacity*:
+    * *Capacity mode*: `Provisioned`
+    * *Provisioned shards*: 1
+NB Set it low to minimise costs. Pricing details are [here](https://aws.amazon.com/kinesis/data-streams/pricing/). Also remember to delete it afterwards.
+
+After this just click 'Create data stream' at the bottom and you should be good to go.
+![Successful creation of an AWS Kinesis Data Stream](Images/KinesisDataStream_SuccessCreation.png)
+
+#### Add an event source in AWS Lambda
+Now we need to connect the Kinesis stream to the Lambda function. To do this navigate back to the lambda function and add a trigger.
+
+![Add Trigger](Images/Lambda_AddTrigger.png)
+
+You'll then be taken to a page where we can specifcy the where the data inputs are coming from. In this case we want to select a `Kinesis stream` and from the drop down menu you should be able to find your `ride_events` stream.
+
+![Trigger Configurations](Images/Lambda_TriggerConfigs.png)
+
+#### Testing Kinesis uploads
+Next we want to test to see if the stream is able to recieve. So we can just use the following lines in the CLI
+
+```bash
+KINESIS_STREAM_INPUT=ride_events
+aws kinesis put-record \
+    --stream-name ${KINESIS_STREAM_INPUT} \
+    --partition-key 1 \
+    --cli-binary-format raw-in-base64-out \
+    --data "Hello, this is a test."
+```
+The `partition-key` flag instructs the kinesis stream on which shard to place the data event.
+
+NB To run this code you need to have a [valid security token configured for AWS](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html?icmpid=docs_iam_console#Using_CreateAccessKey) 
+
+Then configure AWS in your terminal e.g.
+```bash
+$ aws configure
+AWS Access Key ID [None]: AKIAIOSFODNN7EXAMPLE
+AWS Secret Access Key [None]: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+Default region name [None]: us-west-2
+Default output format [None]: json
+```
+Or you can use the [Cloud shell](https://aws.amazon.com/cloudshell/?nc2=h_ql_prod_dt_cs) too
+
+Once you've entered the information into the terminal you should now be able to see it in the CloudLogs. THe cloud logs for the JSON are visible through the lambda function page. Go to the "Monitor" tab. Then select "View CloudWatch Logs, this will allow you to see all the events. By viewing the record we can use this as a test event which I configured as `test-kinesis` and is listed below.
+
+```json
+{
+    "Records": [
+        {
+            "kinesis": {
+                "kinesisSchemaVersion": "1.0",
+                "partitionKey": "1",
+                "sequenceNumber": "49653169065253327118571418308087937388056434114127986690",
+                "data": "SGVsbG8sIHRoaXMgaXMgYSB0ZXN0",
+                "approximateArrivalTimestamp": 1718868621.288
+            },
+            "eventSource": "aws:kinesis",
+            "eventVersion": "1.0",
+            "eventID": "shardId-000000000000:49653169065253327118571418308087937388056434114127986690",
+            "eventName": "aws:kinesis:record",
+            "invokeIdentityArn": "arn:aws:iam::094283992703:role/lambda-kinesis-role",
+            "awsRegion": "us-east-1",
+            "eventSourceARN": "arn:aws:kinesis:us-east-1:094283992703:stream/ride_events"
+        }
+    ]
+}
+```
+Kinesis' `put-record` function should encode data to base64 prior to sending the data. This means that if we want to be able to read the data we will have to add in some additional code to our lambda function.
+
+```python
+import base64
+
+for record in event['Records']:
+    encoded_data = record['kinesis']['data'] #This accesses the actual data being sent
+    decoded_data = base64.b64decode(encoded_data).decode('utf-8')
+    print(decoded_data)
+```
+So now we can see if we deploy and then run the test it works and the text is decoded.
+![Lambda Test - pt1](Images/Lambda-KinesisTest_1.png)
+
+#### Testing Kinesis on the real data format
+Now we want to test this on real data, 
+```bash
+aws kinesis put-record \
+    --stream-name ${KINESIS_STREAM_INPUT} \
+    --partition-key 1 \
+    --cli-binary-format raw-in-base64-out \
+    --data '{
+        "ride": {
+            "PULocationID": 130,
+            "DOLocationID": 205,
+            "trip_distance": 3.66}, 
+        "ride_id": 156
+        }'
+```
+NB From AWS CLIv2 onwards you need the additional tag `--cli-binary-format raw-in-base64-out` as put-record will assume a default entry of base64.
+
+Now if you navigate to the CloudWatch logs of the most recent deployment (should be the top record). You should then see the results as below.
+
+![Successfully reading in real data](Images/Lambda_RealDataTestSucess.png)
+
+Finally, because we actually intend to pass this to another stream in we have ammended the function as below.
+
+```python
+def lambda_handler(event, context):
+    
+    #print(json.dumps(event)) #Converts the JSON input into a dictionary
+    
+    predictions = []
+    for record in event['Records']:
+        encoded_data = record['kinesis']['data'] #This accesses the actual data being sent
+        decoded_data = base64.b64decode(encoded_data).decode('utf-8')
+        ride_event = json.loads(decoded_data)
+    
+        ride = ride_event['ride']
+        ride_id = ride_event['ride_id'] #This is so the data can be tracked in both the in and the out streams
+        
+        features = prepare_features(ride)
+        prediction = predict(features)
+        
+        prediction_event = {
+            'ride_duration': prediction,
+            'ride_id': ride_id
+            }
+            
+        predictions.append(prediction_event)
+    
+    return {
+        'predictions': predictions
+    }
+
+```
+
+
+#### Creating the outflow
+##### Kinesis outflow/destination
+Now we need to create a kinesis stream to record the outputs of the lambda function and store them
+
+This can be done in the same way as the `ride_events` kinesis stream.
+**Settings**
+* *Data stream name*: `ride_predictions`
+* *Data stream capacity*:
+    * *Capacity mode*: `Provisioned`
+    * *Provisioned shards*: 1
+
+#### Changes to the Lambda function
+NB Because this is streaming data we will need to add a whole load more data to the outputs so that they can be identified easily. e.g. Customer ids, model names, versions, etc. This keeps the data better organised and easier to identify in the future. We can reconfigure the outputs to reflect this, for now I have set them as strings.
+
+###### Introducing Boto3
+This will require [boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) to send the data to the next kinesis stream. To cut a long story very short, Boto3 is used to allow python to interact with AWS services. Boto3 can be instatiated by
+```python
+kinesis_client = boto3.client('kinesis')
+```
+
+And each record can be added with the function `put_record` [docs](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/kinesis/client/put_record.html#put-record). NB there is also `put_records` but this is a little more expensive for smaller data. For larger batches it is cheaper than `put_record`.
+
+For put record we have the following parts of data
+
+```python
+response = client.put_record(
+    StreamName='string', #Can make it configurable with os.getenv
+    Data=b'bytes', #Should be the predictions we want to send
+    PartitionKey='string', #the identifier
+    ExplicitHashKey='string', #Optional
+    SequenceNumberForOrdering='string', #Optional
+    StreamARN='string' #Optional
+)
+```
+
+
+##### Current Lambda function
+```python
+import os
+import json
+import base64
+import boto3
+
+kinesis_client = boto3.client('kinesis')
+PREDICTIONS_STREAM_NAME = os.getenv('PREDICTIONS_STREAM_NAME','ride_prediction') #Default stream name
+
+def prepare_features(ride):
+    features = {}
+    features['PU_DO'] = '%s_%s' % (ride['PULocationID'], ride['DOLocationID'])
+    features['trip_distance'] = ride['trip_distance']
+    return features
+
+def predict(features):
+    return 10.0
+
+
+def lambda_handler(event, context):
+    
+    #print(json.dumps(event)) #Converts the JSON input into a dictionary
+    
+    predictions = []
+    for record in event['Records']:
+        encoded_data = record['kinesis']['data'] #This accesses the actual data being sent
+        decoded_data = base64.b64decode(encoded_data).decode('utf-8')
+        ride_event = json.loads(decoded_data)
+    
+        ride = ride_event['ride']
+        ride_id = ride_event['ride_id'] #This is so the data can be tracked in both the in and the out streams
+        
+        features = prepare_features(ride)
+        prediction = predict(features)
+        
+        prediction_event = {
+            'model': 'ride_duration_prediction_model',
+            'version': '123',
+            'prediction': {
+                'ride_duration': prediction,
+                'ride_id': ride_id   
+            }
+        }
+        # Add to Kinesis Client
+        kinesis_client.put_record(
+            StreamName=PREDICTIONS_STREAM_NAME,
+            Data=json.dumps(prediction_event),
+            PartitionKey=str(ride_id)
+        )    
+        predictions.append(prediction_event)
+    #This output is just for us not the stream
+    return {
+        'predictions': predictions
+    }
+```
+### Test the setup
+
+#### Clean up your resources (deleting them)
+
  
 ### Useful resources
-But I found these blog posts helpful
+But I found these blog posts/documentations helpful
+* [What is AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
 * [Best practices for consuming Amazon Kinesis Data Streams using AWS Lambda](https://aws.amazon.com/blogs/big-data/best-practices-for-consuming-amazon-kinesis-data-streams-using-aws-lambda/)
 * [How Lambda processes records from Amazon Kinesis Data Streams](https://docs.aws.amazon.com/lambda/latest/dg/with-kinesis.html#:~:text=You%20can%20use%20a%20Lambda,consumer%20with%20enhanced%20fan%2Dout.)
 * [AWS Lambda function types](https://docs.aws.amazon.com/lambda/latest/dg/services-kinesis-create.html)
