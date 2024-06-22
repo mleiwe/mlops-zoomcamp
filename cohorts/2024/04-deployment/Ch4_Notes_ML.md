@@ -930,13 +930,11 @@ event = {
         }
     ]
 }
-
-
 result = lambda_function.lambda_handler(event, None)
 print(result)
 ```
 
-Now we can test this in the terminal by navigating to the folder where the `lambda_function.py` and `test.py` are, and then executing the test.py with
+Now we can test this in the terminal by navigating to the folder where the `lambda_function.py` and `test.py` are, and then executing the test.py with...
 
 ```bash
 export PREDICTIONS_STREAM_NAME="ride_predictions"
@@ -945,8 +943,282 @@ export TEST_RUN="True"
 python test.py
 ```
 
-NB We created an additional argument `TEST_RUN` which only when false will we add data to the `ride_predictions` stream 
-### Test the final setup
+We created an additional argument `TEST_RUN` which only when false will we add data to the `ride_predictions` stream.
+
+Plus, we don't have access to Alexey's S3 bucket with the model so I did a quick fix to make it work
+
+Loading the model
+```python
+import pickle
+model_path = '../../cohorts/2024/04-deployment/homework/model.bin'
+with open(model_path, 'rb') as f_in:
+    dv, model = pickle.load(f_in)
+```
+Change the predict function
+```python
+def predict(features):
+    features = dv.transform(features)
+    pred = model.predict(features)
+    return float(pred[0])
+```
+
+The full code can be seen [here](04-deployment/streaming/lambda_function_NoS3.py) with an ammended test.py [here](04-deployment/streaming/test_NoS3.py)
+
+#### Creating the docker
+As documented earlier
+1. Create the pipefile and pipefile.lock
+```bash
+pipenv install boto3 mlflow scikit-learn --python=3.9
+```
+2. Create the dockerfile
+```docker
+FROM public.ecr.aws/lambda/python:3.9
+
+RUN pip install -U pip
+RUN pip install pipenv 
+
+COPY [ "Pipfile", "Pipfile.lock", "./" ]
+
+RUN pipenv install --system --deploy
+
+COPY [ "lambda_function.py", "./" ]
+
+CMD [ "lambda_function.lambda_handler" ] #This says where to find the lambda function --> similatr to GUNICORN
+```
+NB Make sure you have the correct base image, this needs to be configurable in AWS. There is the [Amazon ECR Public Gallery](gallery.ecr.aws) from where you can select from many base images. See the .gif below for an example for how to get the name of the image you want.
+
+![Finding the AWS Lambda Docker Images](Images/FindDockerImage.gif)
+
+3. Build the docker
+```bash
+docker build -t stream-model-duration:v1 .
+```
+
+4. Run the docker
+Remember now you need to transfer your environmental variables too.
+```bash
+docker run -it --rm \
+    -p 8080:8080
+    -e PREDICTIONS_STREAM_NAME="ride_predictions" \
+    -e RUN_ID="e1efc53e9bd149078b0c12aeaa6365df" \
+    -e TEST_RUN="True" \
+    stream-model-duration:v1
+```
+NB before configuring the final set we want to test the whole set up locally too. Th
+```python
+import requests 
+
+event = {
+    "Records": [
+        {
+            "kinesis": {
+                "kinesisSchemaVersion": "1.0",
+                "partitionKey": "1",
+                "sequenceNumber": "49630081666084879290581185630324770398608704880802529282",
+                "data": "ewogICAgICAgICJyaWRlIjogewogICAgICAgICAgICAiUFVMb2NhdGlvbklEIjogMTMwLAogICAgICAgICAgICAiRE9Mb2NhdGlvbklEIjogMjA1LAogICAgICAgICAgICAidHJpcF9kaXN0YW5jZSI6IDMuNjYKICAgICAgICB9LCAKICAgICAgICAicmlkZV9pZCI6IDI1NgogICAgfQ==",
+                "approximateArrivalTimestamp": 1654161514.132
+            },
+            "eventSource": "aws:kinesis",
+            "eventVersion": "1.0",
+            "eventID": "shardId-000000000000:49630081666084879290581185630324770398608704880802529282",
+            "eventName": "aws:kinesis:record",
+            "invokeIdentityArn": "arn:aws:iam::387546586013:role/lambda-kinesis-role",
+            "awsRegion": "eu-west-1",
+            "eventSourceARN": "arn:aws:kinesis:eu-west-1:387546586013:stream/ride_events"
+        }
+    ]
+}
+
+
+url = 'http://localhost:8080/2015-03-31/functions/function/invocations'
+response = requests.post(url, json=event)
+print(response.json())
+```
+
+NB In this case in dockerfile the line `CMD [ "lambda_function.lambda_handler" ]` will expose the lambda function. And when we run the docker we are publishing the 8080 port with the flag `-p 8080:8080`. But the url can be a little opaque. Here's how it breaks down
+
+* `http://localhost:8000`: This is the local address and port where the Lambda Runtime Interface Emulator (RIE) is listening. The port 9000 is commonly used, but it can be changed if needed.
+* `/2015-03-31`: This is a version identifier for the Lambda invocation API. It's a fixed part of the URL and doesn't change.
+* `/functions/function`: This path segment indicates that we're invoking a function. The word "function" here is a placeholder and doesn't need to be changed for different functions.
+* `/invocations`: This final part of the path specifies that we want to invoke the function.
+
+You will also have to specify the region in the `kinesis client` in boto3. This is not necessary for the lambda function.
+
+The region is the Kwarg `region`, which could be hardcoded but it is probably better to set it as an environmental variable. Within AWS there are certain default environmental variables that will be present in all commands. The full list is [here](https://docs.aws.amazon.com/cli/v1/userguide/cli-configure-envvars.html). Therefore we just need to set these up when we run our docker.
+
+The necessary ones will be `AWS_ACCESS_KEY_ID`,`AWS_SECRET_ACCESS_KEY`,`AWS_DEFAULT_REGION`. Possibly also your `AWS_SESSION_TOKEN` if you are using temporary tokens. This means our docker run command will look like the following.
+
+```bash
+docker run -it --rm \
+    -p 8080:8080 \
+    -e PREDICTIONS_STREAM_NAME="ride_predictions" \
+    -e RUN_ID="e1efc53e9bd149078b0c12aeaa6365df" \
+    -e TEST_RUN="True" \
+    -e AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
+    -e AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
+    -e AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION}" \
+    stream-model-duration:v1
+```
+That could be seen as quite troublesome, so you can also set them in the .aws config folder
+
+Alternatively, you can mount the `.aws` folder with your credentials to the `.aws` folder in the container:
+
+```bash
+docker run -it --rm \
+    -p 8080:8080 \
+    -e PREDICTIONS_STREAM_NAME="ride_predictions" \
+    -e RUN_ID="e1efc53e9bd149078b0c12aeaa6365df" \
+    -e TEST_RUN="True" \
+    -v /Users/Marcus/.aws:/root/.aws \
+    stream-model-duration:v1
+```
+### Publish your Docker to ECR
+[Amazon Elastic Container Registry (ECR)](https://docs.aws.amazon.com/gb_en/AmazonECR/latest/APIReference/Welcome.html) is a fully managed Docker container registry service provided by AWS. Basically a little bit like a AWS specific GitHub for docker images. You can store docker images privately or publically too. NB there is a [price](https://aws.amazon.com/ecr/pricing/) if you go beyond the limits. Currently (June 2024) this is set at 500MB per month for private storage and 50GB per month of public storage. So you really have to store large images to hit this limit.
+
+You can publish your images using the AWS CLI tool (there's no web UI I could find).
+```bash
+aws ecr create-repository --repository-name duration-model
+```
+
+There will be an output where there is are several fields in a json format
+```json
+{
+    "repository": {
+        "repositoryArn": "arn:aws:ecr:<region>:<registryId>:<repository>/duration-model",
+        "registryId": "<registryId>",
+        "repositoryName": "duration-model",
+        "repositoryURI": "<registryId>.dkr.<region>.amazonaws.com/duration-model",
+        "createdAt": "<TIMESTAMP>",
+        "imageTagMutability": "MUTABLE",
+        "imageScanningConfiguration": {
+            "scanOnPush": false
+        },
+        "encryptionConfiguration": {
+            "encryptionType": "AES256"
+        }
+    }
+}
+```
+The key field here is the repository Uri field which we will use to push the local image to the repository. I recommend saving it as a environmental variable. We can then push the local image to the ECR. 
+
+First you will need to sign in which can be done with your AWS credentials.
+```bash
+$(aws ecr get-login --no-include-email)
+```
+Now you can push the image
+```bash
+REMOTE_URI="387546586013.dkr.ecr.eu-west-1.amazonaws.com/duration-model"
+REMOTE_TAG="v1"
+REMOTE_IMAGE=${REMOTE_URI}:${REMOTE_TAG}
+
+LOCAL_IMAGE="stream-model-duration:v1"
+docker tag ${LOCAL_IMAGE} ${REMOTE_IMAGE}
+docker push ${REMOTE_IMAGE}
+```
+### Create the final lambda function
+
+#### Initial Settings
+So now back on the AWS page, navigate to the [Lambda functions page](https://us-east-1.console.aws.amazon.com/lambda/home?region=us-east-1#/functions), and select "Create Function". This time instead of "Author from scratch" select "Container image" instead.
+![Build a Lambda function from a container](Images/Lambda_CreateFromECRDocker.png)
+
+**Settings**
+
+*Basic Information*
+* `Function name`: "ride-duration-prediction"
+* `Container image URI`: {The image URI}
+* `Architecture`: x86_64
+
+*Permissions*
+* `Execution role`: Use an existing role
+    * "lambda-kinesis-role"
+
+The select "Create function" and you will be taken to the function's page.
+
+#### Set configurations
+What we now need to do is configure the function. This means choosing which triggers to use, what are the environmental variables etc. These can be found in the Configurations tab
+
+##### Environmental Variables
+The environmental variables you will need are...
+* `PREDICTION_STREAM_NAME`
+* `RUN_ID`
+The AWS credentials should not be used as each person using the lambda function should use their own.
+
+##### General configuration
+Click the "Edit" button on the top right of this pane. Depending on your model requirements you may need to increase the memory. e.g. In this example
+* `Memory`: 512 MB
+* `Ephermeral storage`: 512
+* `Timeout`: 0 min 30 sec
+
+Then save. NB The more memory you allocate the more expensive an invocation is. You can check from a Test what are the memory usages.
+
+#### Adding triggers
+Now add the kinesis stream as the trigger. This is the `ride_events` stream we created earlier.
+
+![Add Trigger](Images/Lambda_ConfigureTestEvent.png)
+
+NB we should delete the existing test lambda function as we don't really want to have two lambda functions reading the same stream with the same purpose.
+
+Now to test the lambda function we send an event to the `ride-events` stream.
+
+```bash
+aws kinesis put-record \
+    --stream-name ${KINESIS_STREAM_INPUT} \
+    --partition-key 1 \
+    --data '{
+        "ride": {
+            "PULocationID": 130,
+            "DOLocationID": 205,
+            "trip_distance": 3.66
+        }, 
+        "ride_id": 156
+    }'
+```
+
+#### Add S3 bucket permission policy
+You will need to add a policy permission to list and read S3 buckets to the role for this to work. Being lazy just grant all read and list permissions.
+
+Then Specify the resource, which is done in two places
+* Specify the ARN of your S3 bucket: This will pop up in a self-explanatory modal.
+* Specify the object ARN: Here provide the Bucket name, and set the object as `*` to read all objects in the bucket.
+
+Now move to the review section and fill in the details as appropriate. e.g.
+* `Name`: read_permission_mlflow_models
+* `Description`: This allows you to read the MLflow models
+
+
+## Calling/Invoking the Lambda function
+In the final set up you can call this lambda function in multiple ways
+1. Using AWS Lambda Function URLs:
+
+    AWS Lambda Function URLs provide a built-in HTTPS endpoint for your Lambda function. Probably the simplest way to do it. The URL structure is as follows:
+
+    `https://<url-id>.lambda-url.<region>.on.aws`
+    
+    * `url-id`: A unique identifier for the function URL.
+    * `region`: The AWS region where the Lambda function is deployed. 
+2. Using AWS SDK or CLI:
+
+    When invoking a Lambda function using the AWS SDK or CLI, the URL structure is managed internally by the SDK or CLI. However, the general format for the API endpoint is:
+
+    `https://lambda.<region>.amazonaws.com/2015-03-31/functions/<function-name>/invocations`
+
+    * `region`: The AWS region where the Lambda function is deployed.
+    * `function-name`: The name of the Lambda function.
+3. Using API Gateway:
+
+    When invoking a Lambda function through API Gateway, the URL structure is defined by the API Gateway configuration. The general format is:
+
+    `https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/<resource>`
+    * `api-id`: The unique identifier for the API Gateway.
+    * `region`: The AWS region where the API Gateway is deployed.
+    * `stage`: The stage name (e.g., dev, prod).
+    * `resource`: The resource path defined in the API Gateway.
+
+4. Use the AWS Console:
+    
+    This is what we used when testing the function. You could in theory manually change the inputs each time.
+    
+
 
 #### Clean up your resources (deleting them)
 
@@ -958,6 +1230,7 @@ But I found these blog posts/documentations helpful
 * [How Lambda processes records from Amazon Kinesis Data Streams](https://docs.aws.amazon.com/lambda/latest/dg/with-kinesis.html#:~:text=You%20can%20use%20a%20Lambda,consumer%20with%20enhanced%20fan%2Dout.)
 * [AWS Lambda function types](https://docs.aws.amazon.com/lambda/latest/dg/services-kinesis-create.html)
 * [Enhanced Fan Output documentation](https://docs.aws.amazon.com/streams/latest/dev/enhanced-consumers.html)
+* [Amazon Elastic Container Registry (ECR) basic information](https://docs.aws.amazon.com/gb_en/AmazonECR/latest/APIReference/Welcome.html)
 
 
 
