@@ -1186,8 +1186,9 @@ Now move to the review section and fill in the details as appropriate. e.g.
 * `Description`: This allows you to read the MLflow models
 
 
-## Calling/Invoking the Lambda function
-In the final set up you can call this lambda function in multiple ways
+### Calling/Invoking the Lambda function for non stream events
+If you aren't using a stream you can send JSON requests to your functions in the following ways
+
 1. Using AWS Lambda Function URLs:
 
     AWS Lambda Function URLs provide a built-in HTTPS endpoint for your Lambda function. Probably the simplest way to do it. The URL structure is as follows:
@@ -1216,12 +1217,12 @@ In the final set up you can call this lambda function in multiple ways
 
 4. Use the AWS Console:
     
-    This is what we used when testing the function. You could in theory manually change the inputs each time.
+    This is what we used when testing the function. You could in theory manually change the inputs each time. I wouldn't recommend this but you could do it if you really want.
     
-
-
 #### Clean up your resources (deleting them)
+The beauty of Lambda functions is that you don't pay for them if you aren't using them. However as mentioned, you will be billed for each kinesis stream you leave running. So it is best to delete them once you've finished. To do this just simply navigate to the Kinesis dashboard then select the streams you aren't running anymore and select delete from the options.
 
+![Deleting you data stream](Images/KinesisDataStream_Delete.png)
  
 ### Useful resources
 But I found these blog posts/documentations helpful
@@ -1232,6 +1233,7 @@ But I found these blog posts/documentations helpful
 * [Enhanced Fan Output documentation](https://docs.aws.amazon.com/streams/latest/dev/enhanced-consumers.html)
 * [Amazon Elastic Container Registry (ECR) basic information](https://docs.aws.amazon.com/gb_en/AmazonECR/latest/APIReference/Welcome.html)
 
-
+## 4.5 Batch: Preparing a scoring script
+To be done in the future.
 
 
