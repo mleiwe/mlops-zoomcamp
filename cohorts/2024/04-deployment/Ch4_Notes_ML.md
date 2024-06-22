@@ -18,8 +18,6 @@
 ### Batch
 Runs regularly (e.g. every 10 minutes, 1 hour, 1 day, 1 week, etc.)
 
-#####To insert: Schema for Batch deployment#####
-
 This is often used for marketing, e.g. churn prediction and then do something with the results.
 
 ### Web services
