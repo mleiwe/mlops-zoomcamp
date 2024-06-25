@@ -1,0 +1,15 @@
+{
+  "id": "1539c5d7-0deb-4577-9a7b-a65b084c51a2",
+  "name": "Question 3",
+  "description": "Daily monitoring for March 2024",
+  "dashboard": {
+    "name": "Question 3",
+    "panels": [],
+    "tabs": [],
+    "tab_id_to_panel_ids": {}
+  },
+  "team_id": null,
+  "date_from": null,
+  "date_to": null,
+  "created_at": "2024-06-25T01:50:33.078235"
+}
