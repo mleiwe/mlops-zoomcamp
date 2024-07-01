@@ -1,4 +1,4 @@
-# Chapter 6: Beset Practices
+# Chapter 6: Best Practices
 
 ## Introduction
 This is going to build on top of what we did in chapter 4
