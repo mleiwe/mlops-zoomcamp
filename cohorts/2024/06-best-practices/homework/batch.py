@@ -1,27 +1,19 @@
 #!/usr/bin/env python
 # coding: utf-8
-
+"""
+Create a parquet file containing the appropriate fields locally from the yellow trip data with the specified year, and month.
+"""
 import sys
 import pickle
 import pandas as pd
 
 
-year = int(sys.argv[1])
-month = int(sys.argv[2])
-
-input_file = f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet'
-output_file = f'output/yellow_tripdata_{year:04d}-{month:02d}.parquet'
-
-
-with open('model.bin', 'rb') as f_in:
-    dv, lr = pickle.load(f_in)
-
-
-categorical = ['PULocationID', 'DOLocationID']
-
-def read_data(filename):
+def read_data(filename:str, categorical:list) -> pd.DataFrame:
+    """
+    Reads the parquet file from the variable filename as a dataframe, then converts the categorical columns into a string
+    """
     df = pd.read_parquet(filename)
-    
+
     df['duration'] = df.tpep_dropoff_datetime - df.tpep_pickup_datetime
     df['duration'] = df.duration.dt.total_seconds() / 60
 
@@ -31,22 +23,35 @@ def read_data(filename):
     
     return df
 
+def create_parquet(year:str, month:str):
+    """
+    Main function, creates a parquet file with the processed data
+    """
+    input_file = f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet'
+    #output_file = f'output/yellow_tripdata_{year:04d}-{month:02d}.parquet'
+    output_file = f'./yellow_tripdata_{year:04d}-{month:02d}.parquet'
 
-df = read_data(input_file)
-df['ride_id'] = f'{year:04d}/{month:02d}_' + df.index.astype('str')
+    with open('model.bin', 'rb') as f_in:
+        dv, lr = pickle.load(f_in)
 
+    categorical = ['PULocationID', 'DOLocationID']
 
-dicts = df[categorical].to_dict(orient='records')
-X_val = dv.transform(dicts)
-y_pred = lr.predict(X_val)
+    df = read_data(input_file, categorical)
+    df['ride_id'] = f'{year:04d}/{month:02d}_' + df.index.astype('str')
 
+    dicts = df[categorical].to_dict(orient='records')
+    X_val = dv.transform(dicts)
+    y_pred = lr.predict(X_val)
 
-print('predicted mean duration:', y_pred.mean())
+    print('predicted mean duration:', y_pred.mean())
 
+    df_result = pd.DataFrame()
+    df_result['ride_id'] = df['ride_id']
+    df_result['predicted_duration'] = y_pred
 
-df_result = pd.DataFrame()
-df_result['ride_id'] = df['ride_id']
-df_result['predicted_duration'] = y_pred
+    df_result.to_parquet(output_file, engine='pyarrow', index=False)
 
-
-df_result.to_parquet(output_file, engine='pyarrow', index=False)
+if __name__=="__main__":
+    year = int(sys.argv[1])
+    month = int(sys.argv[2])
+    create_parquet(year, month)
