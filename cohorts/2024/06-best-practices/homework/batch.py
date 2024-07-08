@@ -7,6 +7,17 @@ import sys
 import pickle
 import pandas as pd
 
+def get_input_path(year, month):
+    default_input_pattern = 'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet'
+    input_pattern = os.getenv('INPUT_FILE_PATTERN', default_input_pattern)
+    return input_pattern.format(year=year, month=month)
+
+
+def get_output_path(year, month):
+    default_output_pattern = 's3://nyc-duration-prediction-alexey/taxi_type=fhv/year={year:04d}/month={month:02d}/predictions.parquet'
+    output_pattern = os.getenv('OUTPUT_FILE_PATTERN', default_output_pattern)
+    return output_pattern.format(year=year, month=month)
+
 
 def read_data(filename:str, categorical:list) -> pd.DataFrame:
     """
@@ -23,20 +34,23 @@ def read_data(filename:str, categorical:list) -> pd.DataFrame:
     
     return df
 
-def create_parquet(year:str, month:str):
+def create_parquet(year,month):
     """
     Main function, creates a parquet file with the processed data
     """
-    input_file = f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet'
-    #output_file = f'output/yellow_tripdata_{year:04d}-{month:02d}.parquet'
-    output_file = f'./yellow_tripdata_{year:04d}-{month:02d}.parquet'
+    # input_file = f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet'
+    # output_file = f'output/yellow_tripdata_{year:04d}-{month:02d}.parquet'
+    # output_file = f'./yellow_tripdata_{year:04d}-{month:02d}.parquet'
 
     with open('model.bin', 'rb') as f_in:
         dv, lr = pickle.load(f_in)
 
     categorical = ['PULocationID', 'DOLocationID']
 
-    df = read_data(input_file, categorical)
+    input_path = get_input_path(year, month)
+    output_path = get_input_path(year, month)
+
+    df = read_data(input_path, categorical)
     df['ride_id'] = f'{year:04d}/{month:02d}_' + df.index.astype('str')
 
     dicts = df[categorical].to_dict(orient='records')
@@ -49,7 +63,7 @@ def create_parquet(year:str, month:str):
     df_result['ride_id'] = df['ride_id']
     df_result['predicted_duration'] = y_pred
 
-    df_result.to_parquet(output_file, engine='pyarrow', index=False)
+    df_result.to_parquet(output_path, engine='pyarrow', index=False)
 
 if __name__=="__main__":
     year = int(sys.argv[1])
